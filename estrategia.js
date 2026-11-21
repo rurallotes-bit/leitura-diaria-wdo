@@ -1,0 +1,548 @@
+/* Aba Estratégia: agente coordenador M15 (visual cyberpunk) */
+(function () {
+  const root = document.getElementById('view-estrategia');
+  if (!root) return;
+  const LOCAL = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
+  const INTERVALO = LOCAL ? 15000 : 60000;
+  let dados = null, ultimo = null;
+
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmt = (x, nd = 1) => x == null || isNaN(x) ? '—' : Number(x).toLocaleString('pt-BR', { minimumFractionDigits: nd, maximumFractionDigits: nd });
+  const pct = (x, nd = 1) => x == null ? '—' : fmt(x * 100, nd) + '%';
+  const sgn = (x, nd = 2) => x == null ? '—' : (x > 0 ? '+' : x < 0 ? '−' : '') + fmt(Math.abs(x), nd);
+  const cls = x => x > 0 ? 'cy-up' : x < 0 ? 'cy-dn' : '';
+
+  const COR_ACAO = { 'COMPRA': 'buy', 'VENDA': 'sell', 'AGUARDAR CONFIRMAÇÃO': 'wait', 'AGUARDAR': 'idle' };
+
+  // ---------- decisão ----------
+  // relógio analógico: 0 no topo-esquerda, 100 no topo-direita (arco de -90° a +90°)
+  function relogio(titulo, valor, marca, cor, unidade) {
+    const v = valor == null || isNaN(valor) ? 0 : Math.max(0, Math.min(1, valor));
+    const ang = -90 + v * 180;
+    const m = marca == null || isNaN(marca) ? null : -90 + Math.max(0, Math.min(1, marca)) * 180;
+    const ponto = a => { const r = a * Math.PI / 180; return [60 + 46 * Math.cos(r), 60 + 46 * Math.sin(r)]; };
+    const marcas = [0, .25, .5, .75, 1].map(f => {
+      const a = -90 + f * 180, r = a * Math.PI / 180;
+      return `<line x1="${60 + 40 * Math.cos(r)}" y1="${60 + 40 * Math.sin(r)}" x2="${60 + 47 * Math.cos(r)}" y2="${60 + 47 * Math.sin(r)}" class="rel-tick"/>`;
+    }).join('');
+    const limiar = m == null ? '' : (() => { const [x1, y1] = [60 + 34 * Math.cos(m * Math.PI / 180), 60 + 34 * Math.sin(m * Math.PI / 180)];
+      const [x2, y2] = [60 + 48 * Math.cos(m * Math.PI / 180), 60 + 48 * Math.sin(m * Math.PI / 180)];
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="rel-limiar"/>`; })();
+    return `<div class="rel" style="--cor:${cor}">
+      <svg viewBox="0 0 120 84" role="img" aria-label="${esc(titulo)} ${esc(unidade)}">
+        <path d="M14 60 A46 46 0 0 1 106 60" class="rel-arco"/>
+        ${marcas}${limiar}
+        <g class="rel-ponteiro" style="transform:rotate(${ang}deg)"><line x1="60" y1="60" x2="60" y2="18" /></g>
+        <circle cx="60" cy="60" r="4" class="rel-eixo"/>
+      </svg>
+      <div class="rel-txt"><b>${esc(titulo)}</b><span class="cy-mono">${unidade}</span></div>
+    </div>`;
+  }
+
+  function relogios(e) {
+    const g = e.grafico || {};
+    const ult = v => Array.isArray(v) ? v[v.length - 1] : v;
+    const vw = ult(g.vwap), sd = ult(g.sd), preco = e.preco;
+    const z = (vw != null && sd) ? (preco - vw) / sd : null;          // desvios padrão a partir do VWAP
+    const relPreco = z == null ? null : (Math.max(-2, Math.min(2, z)) + 2) / 4;   // -2σ..+2σ -> 0..1
+    const x = e.lados || {};
+    return [
+      relogio('Compra', x.compra && x.compra.prob, x.compra && x.compra.limiar, '#29ff9a', pct(x.compra && x.compra.prob)),
+      relogio('Venda', x.venda && x.venda.prob, x.venda && x.venda.limiar, '#ff3b6b', pct(x.venda && x.venda.prob)),
+      relogio('Preço x VWAP', relPreco, 0.5, '#00f0ff', z == null ? '—' : (z >= 0 ? '+' : '') + fmt(z, 1) + 'σ')
+    ].join('');
+  }
+
+  function blocoDecisao(e) {
+    const d = e.decisao, p = d.plano, k = COR_ACAO[d.acao] || 'idle';
+    const prob = nome => {
+      const x = e.lados[nome] || {};
+      if (x.prob == null) return '';
+      const w = Math.max(0, Math.min(100, x.prob * 100)), t = Math.max(0, Math.min(100, x.limiar * 100));
+      return `<div class="cy-prob ${nome === 'compra' ? 'buy' : 'sell'}">
+        <div class="cy-prob-top"><b>${nome === 'compra' ? 'Compra' : 'Venda'}</b>
+          <span class="cy-mono">${pct(x.prob)} <small>limiar ${pct(x.limiar)}</small></span>
+          <span class="cy-badge ${x.validado ? 'ok' : 'no'}">${x.validado ? 'acerto 70%+' : 'abaixo de 70%'}</span></div>
+        <div class="cy-bar"><i style="width:${w}%"></i><em style="left:${t}%"></em></div></div>`;
+    };
+    const plano = !p ? '' : `
+      <div class="cy-plan">
+        <div class="cy-cell"><b>Entrada stop</b><span class="cy-mono">${fmt(p.entrada)}</span><em>${p.acionada ? '<span class="cy-hot">ACIONADA</span>' : 'válida até ' + esc(p.valida_ate)}</em></div>
+        <div class="cy-cell stop"><b>Stop</b><span class="cy-mono">${fmt(p.stop)}</span><em>${fmt(p.risco_pts)} pts · R$ ${fmt(p.risco_rs, 0)}/contrato</em></div>
+        <div class="cy-cell alvo"><b>Alvo 1 · parcial 50%</b><span class="cy-mono">${fmt(p.alvo1)}</span><em>${fmt(p.a1, 1)}R · depois stop no zero a zero</em></div>
+        <div class="cy-cell alvo"><b>Alvo 2 · restante</b><span class="cy-mono">${fmt(p.alvo2)}</span><em>${fmt(p.a2, 1)}R</em></div>
+      </div>
+      ${p.pullback && p.pullback.length ? `<div class="cy-pb"><b>Pullbacks no caminho</b> ${p.pullback.map(z =>
+        `<span class="cy-chip">${esc(z.nome)} <span class="cy-mono">${fmt(z.preco)}</span>${z.antes_alvo1 ? ' · antes do alvo 1' : ''}</span>`).join('')}</div>` : ''}`;
+    return `<section class="cy-card cy-decision ${k}">
+      <div class="cy-tag">DECISÃO // barra ${esc(e.barra)}–${esc(e.fim_barra)}</div>
+      <div class="cy-acao" data-text="${esc(d.acao)}">${esc(d.acao)}</div>
+      <ul class="cy-motivos">${d.motivos.map(m => `<li>${esc(m)}</li>`).join('')}</ul>
+      ${plano}
+      <div class="cy-probs">${prob('compra')}${prob('venda')}</div>
+      <div class="rel-grupo">${relogios(e)}</div>
+    </section>`;
+  }
+
+  // ---------- agentes ----------
+  const ICONE = { estrutura: '⟁', ob: '▣', vwap: '≋', momentum: '◬', fluxo: '⇅', risco: '⛨' };
+  function blocoAgentes(e) {
+    return `<section class="cy-card cy-agents">
+      <div class="cy-tag">AGENTES // −100 venda · +100 compra</div>
+      <div class="cy-agrid">${e.agentes.map(a => {
+        const v = Math.max(-100, Math.min(100, a.voto || 0));
+        return `<div class="cy-agent">
+          <div class="cy-ahead"><span class="cy-ico">${ICONE[a.id] || '◆'}</span><b>${esc(a.nome)}</b>
+            ${a.id === 'risco' ? '' : `<span class="cy-mono ${cls(v)}">${v > 0 ? '+' : ''}${Math.round(v)}</span>`}</div>
+          ${a.id === 'risco' ? '' : `<div class="cy-vote"><i class="${v >= 0 ? 'p' : 'n'}" style="${v >= 0 ? 'left:50%' : 'right:50%'};width:${Math.abs(v) / 2}%"></i></div>`}
+          <p>${esc(a.leitura)}</p></div>`;
+      }).join('')}</div>
+      ${pesos(e)}
+    </section>`;
+  }
+
+  function pesos(e) {
+    const lado = (e.decisao.lado) || (((e.lados.compra || {}).prob || 0) - ((e.lados.compra || {}).limiar || 0) >=
+      ((e.lados.venda || {}).prob || 0) - ((e.lados.venda || {}).limiar || 0) ? 'compra' : 'venda');
+    const x = e.lados[lado];
+    if (!x || x.prob == null) return '';
+    const lista = (arr, c) => arr.length ? arr.map(i => `<span class="cy-chip ${c}">${esc(i.nome)} <span class="cy-mono">${sgn(i.peso)}</span></span>`).join('') : '<span class="cy-dim">nenhum</span>';
+    return `<div class="cy-weights"><b>Coordenador · o que mais pesa na ${lado}</b>
+      <div><span class="cy-dim">a favor</span> ${lista(x.a_favor, 'up')}</div>
+      <div><span class="cy-dim">contra</span> ${lista(x.contra, 'dn')}</div></div>`;
+  }
+
+  // ---------- gráfico M15 ----------
+  function grafico(e, g = e.grafico, titulo = 'M15 // estrutura, order blocks e VWAP ±1σ ±2σ', p = e.decisao.plano) {
+    const v = g.velas, n = v.length;
+    if (n < 5) return '';
+    const W = 920, H = 400, L = 8, R = 70, T = 12, B = H - 24;
+    let lo = Math.min(...v.map(c => c[3])), hi = Math.max(...v.map(c => c[2]));
+    const extra = p ? [p.entrada, p.stop, p.alvo1, p.alvo2] : [];
+    extra.forEach(x => { lo = Math.min(lo, x); hi = Math.max(hi, x); });
+    const sims = (g.sims || []).filter(o => o.de < n);
+    sims.forEach(o => { lo = Math.min(lo, o.stop, o.alvo); hi = Math.max(hi, o.stop, o.alvo); });
+    const pad = (hi - lo) * 0.04 || 1; lo -= pad; hi += pad;
+    const dx = (W - L - R) / n, bw = Math.max(2, dx * 0.62);
+    const X = i => L + dx * (i + 0.5), Y = y => T + (hi - y) / (hi - lo) * (B - T);
+    let s = '';
+    // grade de preço
+    const passo = [1, 2, 2.5, 5, 10, 20, 25, 50].find(st => (hi - lo) / st <= 16) || 50;
+    for (let y = Math.ceil(lo / passo) * passo; y <= hi; y += passo) {
+      s += `<line x1="${L}" x2="${W - R}" y1="${Y(y).toFixed(1)}" y2="${Y(y).toFixed(1)}" class="cy-gl"/><text x="${W - R + 6}" y="${(Y(y) + 4).toFixed(1)}" class="cy-ax">${fmt(y, passo < 1 ? 1 : 0)}</text>`;
+    }
+    // separação de dias
+    for (let i = 1; i < n; i++) if (g.dia[i] !== g.dia[i - 1]) {
+      s += `<line x1="${(L + dx * i).toFixed(1)}" x2="${(L + dx * i).toFixed(1)}" y1="${T}" y2="${B}" class="cy-day"/><text x="${(L + dx * i + 4).toFixed(1)}" y="${B + 16}" class="cy-ax">${esc(v[i][0].slice(0, 5))}</text>`;
+    }
+    // order blocks
+    g.obs.forEach(o => {
+      const x0 = X(o.de) - dx / 2, x1 = o.ate == null ? W - R : X(Math.min(o.ate, n - 1)) + dx / 2;
+      if (x1 <= L) return;
+      s += `<rect x="${Math.max(L, x0).toFixed(1)}" y="${Y(o.hi).toFixed(1)}" width="${Math.max(2, x1 - Math.max(L, x0)).toFixed(1)}" height="${Math.max(2, Y(o.lo) - Y(o.hi)).toFixed(1)}" class="cy-ob ${o.lado > 0 ? 'b' : 's'} ${o.ate == null ? 'vivo' : ''}"><title>OB de ${o.lado > 0 ? 'alta' : 'baixa'} ${fmt(o.lo)}–${fmt(o.hi)}</title></rect>`;
+    });
+    // FVG: espaço entre a vela 1 e a vela 3 que o preço não negociou
+    for (let i = 2; i < n; i++) {
+      if (g.dia[i] !== g.dia[i - 2]) continue;
+      const a = v[i - 2], c = v[i];
+      let lado = 0, baixo = 0, topo = 0;
+      if (c[3] > a[2]) { lado = 1; baixo = a[2]; topo = c[3]; }        // alta: máxima da vela 1 até a mínima da vela 3
+      else if (a[3] > c[2]) { lado = -1; topo = a[3]; baixo = c[2]; }  // baixa: mínima da vela 1 até a máxima da vela 3
+      if (!lado) continue;
+      let fim = n - 1;
+      for (let k = i + 1; k < n; k++) {
+        if ((lado > 0 && v[k][3] <= baixo) || (lado < 0 && v[k][2] >= topo)) { fim = k; break; }
+      }
+      const x0 = X(i - 1) - dx / 2, x1 = X(fim) + dx / 2;
+      s += `<rect x="${x0.toFixed(1)}" y="${Y(topo).toFixed(1)}" width="${Math.max(2, x1 - x0).toFixed(1)}" height="${Math.max(2, Y(baixo) - Y(topo)).toFixed(1)}" class="cy-fvg ${lado > 0 ? 'b' : 's'}"><title>FVG de ${lado > 0 ? 'alta' : 'baixa'} ${fmt(baixo)} a ${fmt(topo)}</title></rect>`;
+    }
+    // simulação 2R: faixa verde = ganho até o alvo, faixa vermelha = risco até o stop (nenhuma ordem é enviada)
+    const RES = { alvo: 'bateu o alvo', stop: 'bateu o stop', tempo: 'saiu por tempo', aberta: 'em aberto' };
+    let simTxt = '';
+    sims.forEach(o => {
+      const x0 = X(o.de) - dx / 2, x1 = X(Math.min(o.ate, n - 1)) + dx / 2, w = Math.max(dx, x1 - x0);
+      const ye = Y(o.entrada), ya = Y(o.alvo), ys = Y(o.stop);
+      const caixa = (c, y) => `<rect class="${c}" x="${x0.toFixed(1)}" y="${Math.min(ye, y).toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1, Math.abs(y - ye)).toFixed(1)}"/>`;
+      s += `<g class="cy-sim ${o.res}"><title>${o.lado > 0 ? 'Compra' : 'Venda'} simulada ${esc(o.hora)} · entrada ${fmt(o.entrada)} · stop ${fmt(o.stop)} · alvo 2R ${fmt(o.alvo)} · ${RES[o.res] || ''} ${sgn(o.r)} R</title>
+        ${caixa('g', ya)}${caixa('p', ys)}<line class="e" x1="${x0.toFixed(1)}" x2="${(x0 + w).toFixed(1)}" y1="${ye.toFixed(1)}" y2="${ye.toFixed(1)}"/></g>`;
+      simTxt += `<text x="${(x0 + 3).toFixed(1)}" y="${(o.r >= 0 ? ya + (ya < ye ? 11 : -4) : ys + (ys < ye ? 11 : -4)).toFixed(1)}" class="cy-simt ${o.r >= 0 ? 'up' : 'dn'}">${o.lado > 0 ? 'C' : 'V'} ${sgn(o.r)}R</text>`;
+    });
+    // VWAP e bandas (por dia)
+    const linha = (f, c) => {
+      let d = '', abre = true;
+      for (let i = 0; i < n; i++) {
+        const y = f(i);
+        if (y == null || (i && g.dia[i] !== g.dia[i - 1])) abre = true;
+        if (y == null) continue;
+        d += (abre ? 'M' : 'L') + X(i).toFixed(1) + ' ' + Y(y).toFixed(1) + ' '; abre = false;
+      }
+      return `<path d="${d}" class="${c}"/>`;
+    };
+    [2, 1, -1, -2].forEach(k => { s += linha(i => g.vwap[i] == null ? null : g.vwap[i] + k * g.sd[i], 'cy-band b' + Math.abs(k)); });
+    s += linha(i => g.vwap[i], 'cy-vwap');
+    // candles
+    v.forEach((c, i) => {
+      const up = c[4] >= c[1], x = X(i);
+      const y0 = Y(Math.max(c[1], c[4])), y1 = Y(Math.min(c[1], c[4]));
+      s += `<g class="${up ? 'cy-cu' : 'cy-cd'}${i === g.sinal ? ' cy-sig' : ''}"><title>${esc(c[0])}  A ${fmt(c[1])}  M ${fmt(c[2])}  m ${fmt(c[3])}  F ${fmt(c[4])}</title>
+        <line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${Y(c[2]).toFixed(1)}" y2="${Y(c[3]).toFixed(1)}"/>
+        <rect x="${(x - bw / 2).toFixed(1)}" y="${y0.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, y1 - y0).toFixed(1)}"/></g>`;
+    });
+    // linha de fechamento por cima das velas + último preço
+    s += `<path d="${v.map((c, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(c[4]).toFixed(1)).join(' ')}" class="cy-preco"/>`;
+    const ult = v[n - 1][4];
+    s += `<line x1="${L}" x2="${W - R}" y1="${Y(ult).toFixed(1)}" y2="${Y(ult).toFixed(1)}" class="cy-ultimo"/>
+      <rect x="${W - R + 1}" y="${(Y(ult) - 8).toFixed(1)}" width="${R - 2}" height="16" class="cy-ultbox"/>
+      <text x="${W - R + 6}" y="${(Y(ult) + 4).toFixed(1)}" class="cy-ultt">${fmt(ult, passo < 1 ? 1 : 0)}</text>`;
+    // BOS / CHoCH
+    g.eventos.forEach(ev => {
+      const x0 = X(ev.de), x1 = X(ev.k), y = Y(ev.nivel);
+      s += `<line x1="${x0.toFixed(1)}" x2="${x1.toFixed(1)}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" class="cy-ev ${ev.lado > 0 ? 'b' : 's'}"/>
+        <text x="${((x0 + x1) / 2).toFixed(1)}" y="${(y + (ev.lado > 0 ? -4 : 11)).toFixed(1)}" text-anchor="middle" class="cy-evt ${ev.lado > 0 ? 'b' : 's'}">${ev.tipo}</text>`;
+    });
+    s += simTxt;
+    // sinal e plano
+    if (g.sinal >= 0 && g.sinal < n) s += `<rect x="${(X(g.sinal) - dx / 2).toFixed(1)}" y="${T}" width="${dx.toFixed(1)}" height="${B - T}" class="cy-sigcol"/>`;
+    if (p) {
+      [['entrada', p.entrada, 'Entrada'], ['stop', p.stop, 'Stop'], ['alvo', p.alvo1, 'Alvo 1'], ['alvo', p.alvo2, 'Alvo 2']].forEach(([c, y, t]) => {
+        s += `<line x1="${X(Math.max(0, g.sinal)).toFixed(1)}" x2="${W - R}" y1="${Y(y).toFixed(1)}" y2="${Y(y).toFixed(1)}" class="cy-pl ${c}"/>
+          <text x="${W - R - 4}" y="${(Y(y) - 4).toFixed(1)}" text-anchor="end" class="cy-plt ${c}">${t} ${fmt(y)}</text>`;
+      });
+    }
+    // valores das bandas no último ponto com VWAP
+    let u = n - 1;
+    while (u >= 0 && (g.vwap[u] == null || g.sd[u] == null)) u--;
+    const niveis = u < 0 ? '' : [[2, '+2σ'], [1, '+1σ'], [0, 'VWAP'], [-1, '−1σ'], [-2, '−2σ']]
+      .map(([k, t]) => `<span class="${k === 0 ? 'v' : Math.abs(k) === 1 ? 'd' : 'b2'}">${t} ${fmt(g.vwap[u] + k * g.sd[u], 0)}</span>`).join('');
+    // resumo da simulação 2R (só nos gráficos que recebem as operações simuladas)
+    const sm = e.simulacao;
+    const simRes = !g.sims || !sm ? '' : `<div class="cy-simres"><b>Simulação 2R</b> · ${sims.length} neste gráfico · desde ${esc(sm.desde)}: <b>${sm.n}</b> operações ·
+      <span class="cy-up">${sm.alvos} no alvo</span> · <span class="cy-dn">${sm.stops} no stop</span> · ${sm.tempo} por tempo${sm.abertas ? ' · ' + sm.abertas + ' em aberto' : ''} ·
+      saldo <b class="cy-mono ${cls(sm.saldo_r)}">${sgn(sm.saldo_r)} R</b>${sm.media_r == null ? '' : ` (média <span class="cy-mono ${cls(sm.media_r)}">${sgn(sm.media_r)} R</span>)`}
+      <small>Simulação para estudo: nenhuma ordem é enviada.</small></div>`;
+    return `<section class="cy-card cy-chart">
+      <div class="cy-tag">${esc(titulo)}</div>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico M15 do WDO">${s}</svg>
+      <div class="cy-niveis">${niveis}<span class="cy-ultp">último ${fmt(ult, passo < 1 ? 1 : 0)}</span></div>
+      <div class="cy-leg"><span class="b">▮ OB alta</span><span class="s">▮ OB baixa</span><span class="fb">▮ FVG alta</span><span class="fs">▮ FVG baixa</span><span class="v">— VWAP</span><span class="d">┄ ±σ</span><span class="sig">▯ sinal</span>${g.sims ? '<span class="b">▮ ganho até 2R</span><span class="s">▮ risco até o stop</span>' : ''}</div>
+      ${simRes}
+    </section>`;
+  }
+
+  // ---------- leitura em M240 (motor antigo; só aparece se o motor SMC não mandar dados) ----------
+  function blocoTempos(e) {
+    const t = e.tempos || {};
+    const cartoes = [].filter(k => t[k] && t[k].grafico)   // M240, M5 e M1 retirados a pedido
+      .map(k => grafico(e, t[k].grafico, `${k} // estrutura, order blocks e VWAP ±1σ ±2σ`, null)).join('');
+    return cartoes ? `<div class="cy-tempos">${cartoes}</div>` : '';
+  }
+
+  // ---------- backtest ----------
+  function curva(c) {
+    if (!c || c.length < 2) return '<p class="cy-dim">Sem trades suficientes fora da amostra.</p>';
+    const W = 420, H = 110, mn = Math.min(0, ...c), mx = Math.max(0, ...c);
+    const X = i => 4 + i / (c.length - 1) * (W - 8), Y = y => 6 + (mx - y) / ((mx - mn) || 1) * (H - 12);
+    const d = c.map((y, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(y).toFixed(1)).join(' ');
+    return `<svg viewBox="0 0 ${W} ${H}" class="cy-eq"><line x1="0" x2="${W}" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}" class="cy-gl"/>
+      <path d="${d} L${X(c.length - 1).toFixed(1)} ${Y(0).toFixed(1)} L${X(0).toFixed(1)} ${Y(0).toFixed(1)}Z" class="cy-eqf ${c[c.length - 1] >= 0 ? 'up' : 'dn'}"/>
+      <path d="${d}" class="cy-eql ${c[c.length - 1] >= 0 ? 'up' : 'dn'}"/></svg>`;
+  }
+
+  function blocoBacktest(e) {
+    const b = e.backtest || {}, cfg = e.config || {};
+    const linha = (rot, st) => `<tr><td>${rot}</td><td class="cy-mono">${st.n}</td><td class="cy-mono ${st.acerto > 0.5 ? 'cy-up' : 'cy-dn'}">${pct(st.acerto)}</td>
+      <td class="cy-mono ${cls(st.expect)}">${sgn(st.expect)} R</td><td class="cy-mono">${st.pf == null ? '—' : fmt(st.pf, 2)}</td><td class="cy-mono">${fmt(st.dd, 1)} R</td></tr>`;
+    const lado = nome => {
+      const x = (b.lados || {})[nome], c = cfg[nome] || {};
+      const nomeLado = nome === 'compra' ? 'Compra' : 'Venda';
+      if (!x || !x.is || !x.oos || x.oos.acerto == null || x.oos.acerto < 0.70)
+        return `<div class="cy-side cy-off"><h4>${nomeLado} <span class="cy-badge no">fora do filtro 70%+</span></h4>
+          <p class="cy-dim">${x && x.oos && x.oos.acerto != null ? 'Acerto fora da amostra: <b class="cy-mono">' + pct(x.oos.acerto) + '</b> em ' + x.oos.n + ' trades. Não exibido.' : esc((x && x.motivo) || 'Sem dados suficientes.')}</p></div>`;
+      return `<div class="cy-side">
+        <h4>${nome === 'compra' ? 'Compra' : 'Venda'} <span class="cy-badge ${x.validado ? 'ok' : 'no'}">${x.validado ? '70%+' : 'abaixo de 70%'}</span></h4>
+        <p class="cy-cfg">Stop <b>${esc(c.stop)}</b> · alvo 1 <b>${fmt(c.a1, 1)}R</b> (parcial 50%) · alvo 2 <b>${fmt(c.a2, 1)}R</b> · limiar <b>${pct(c.limiar)}</b></p>
+        <table class="cy-tab"><thead><tr><th></th><th>Trades</th><th>Acerto</th><th>Média</th><th>PF</th><th>Queda máx.</th></tr></thead>
+          <tbody>${linha('Treino', x.is)}${linha('Fora da amostra', x.oos)}</tbody></table>
+        <div class="cy-eqbox"><span class="cy-dim">Acumulado fora da amostra (R)</span>${curva(x.curva)}</div>
+        <details class="cy-rank"><summary>${x.testadas - 1} combinações</summary>
+          <table class="cy-tab"><thead><tr><th>Stop</th><th>Alvo 1</th><th>Alvo 2</th><th>Treino</th><th>Fora</th><th>Trades</th><th>Média</th></tr></thead><tbody>
+          ${x.ranking.filter(r => r.oos && r.oos.acerto >= 0.70).map(r => `<tr><td>${esc(r.stop)}</td><td class="cy-mono">${fmt(r.a1, 1)}R</td><td class="cy-mono">${fmt(r.a2, 1)}R</td><td class="cy-mono">${pct(r.is)}</td>
+            <td class="cy-mono ${r.oos > 0.5 ? 'cy-up' : 'cy-dn'}">${pct(r.oos)}</td><td class="cy-mono">${r.oos_n}</td><td class="cy-mono ${cls(r.oos_exp)}">${sgn(r.oos_exp)} R</td></tr>`).join('')}
+          </tbody></table></details>
+      </div>`;
+    };
+    const d = s => s ? s.split('-').reverse().join('/') : '';
+    return `<section class="cy-card cy-bt">
+      <div class="cy-tag">BACKTEST // treino ${d(b.periodo_is && b.periodo_is[0])} a ${d(b.periodo_is && b.periodo_is[1])} · validação ${d(b.periodo_oos && b.periodo_oos[0])} a ${d(b.periodo_oos && b.periodo_oos[1])}</div>
+      <div class="cy-sides">${lado('compra')}${lado('venda')}</div>
+      <p class="cy-dim cy-small">Escolhe stop e alvos no treino e confere nos ${b.dias ? Math.round(b.dias * 0.3) : ''} dias finais · custo ${fmt(b.custo_pts, 1)} pt · treinado em ${esc(b.gerado_em || '')}</p>
+    </section>`;
+  }
+
+  // ====================================================================================
+  // Motor SMC dos gráficos (d.smc): só FVG, iFVG, OB, BOS e CHoCH em M240, M60 e M15.
+  // Separado da Decisão e dos Agentes, que continuam com o motor antigo, só para consulta.
+  // ====================================================================================
+  const TEMPOS_SMC = ['M60', 'M15'];
+  const VELA_TXT = { M60: 'cada vela = 1 hora', M15: 'cada vela = 15 minutos' };
+
+  // Escala de tempo proporcional às velas: a hora de abertura embaixo de cada vela e a data por pregão.
+  function escalaTempo(g, minutos, L, dx, T, B, fim) {
+    const v = g.velas, n = v.length;
+    const hora = i => +v[i][0].slice(6, 8), minuto = i => +v[i][0].slice(9, 11);
+    let s = `<line x1="${L}" x2="${fim}" y1="${B}" y2="${B}" class="cy-eixo"/>`;
+    // Linha 1: embaixo de CADA vela, a hora em que ela abre (M15: 9:00, 9:15, 9:30…; M60: 9:00, 10:00…;
+    // M240: 8:00, 12:00, 16:00), escrita em pé para caber uma por vela.
+    const salto = Math.max(1, Math.ceil(10 / dx));      // só pula vela se não couber uma por vela
+    for (let i = 0; i < n; i++) {
+      const xc = L + dx * (i + 0.5), cheia = minuto(i) === 0;
+      if (i && g.dia[i] !== g.dia[i - 1]) {
+        const x = L + dx * i;
+        s += `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T}" y2="${B + 50}" class="cy-day"/>`;
+      } else if (cheia && minutos < 60) {
+        s += `<line x1="${(L + dx * i).toFixed(1)}" x2="${(L + dx * i).toFixed(1)}" y1="${T}" y2="${B}" class="cy-hr"/>`;
+      }
+      if (Math.round((hora(i) * 60 + minuto(i)) / minutos) % salto) continue;
+      const x = (xc + 3.5).toFixed(1), y = B + 6;
+      s += `<line x1="${xc.toFixed(1)}" x2="${xc.toFixed(1)}" y1="${B}" y2="${B + 3}" class="cy-eixo"/>
+        <text x="${x}" y="${y}" transform="rotate(-90 ${x} ${y})" text-anchor="end" class="cy-ax${cheia && minutos < 60 ? ' cy-axd' : ''}">${hora(i)}:${v[i][0].slice(9, 11)}</text>`;
+    }
+    // Linha 2: a data, uma vez por pregão, no começo dele
+    let ultimo = -99;
+    for (let i = 0; i < n; i++) {
+      if (i && g.dia[i] === g.dia[i - 1]) continue;
+      const x = L + dx * i;
+      if (x - ultimo < 36) continue;
+      s += `<text x="${(x + 3).toFixed(1)}" y="${B + 48}" class="cy-ax cy-axd">${esc(v[i][0].slice(0, 5))}</text>`;
+      ultimo = x;
+    }
+    return s;
+  }
+  const FINAL_TXT = { alvo: 'bateu o alvo', stop: 'bateu o stop', tempo: 'saiu por tempo', aberta: 'em aberto',
+    'zero a zero': 'saiu no zero a zero', 'parcial e zerou': 'fez a parcial e zerou o resto',
+    'parcial e travou +2,5': 'fez a parcial e travou +2,5 no resto' };
+  const EXTRA_TXT = { sobreposta: 'zonas sobrepostas', primeira: 'primeira volta à zona', desconto: 'desconto/prêmio',
+    impulso: 'zona de impulso', varredura: 'varredura de liquidez' };
+  const nomeCombo = c => [c.filtro === 'Todos' ? 'OB + FVG + iFVG' : c.filtro,
+    c.modo === 'menor' ? `entrada no CHoCH/BOS do ${c.menor}` : 'entrada na vela',
+    ...(c.extras || []).map(x => EXTRA_TXT[x] || x), `${c.conf ? 'com' : 'sem'} confluência`, c.gestao].join(' · ');
+
+  function graficoSMC(rot, t) {
+    const g = t.grafico, v = g.velas, n = v.length;
+    if (!n) return `<section class="cy-card cy-chart"><div class="cy-tag">${rot} // FVG · iFVG · OB · BOS · CHoCH</div>
+      <p class="cy-dim">O MT5 ainda não mandou velas do ${rot}.</p></section>`;
+    const W = 920, H = 432, L = 8, R = 70, T = 12, B = H - 54;   // 54 px embaixo: hora de cada vela + data
+    let lo = Math.min(...v.map(c => c[3])), hi = Math.max(...v.map(c => c[2]));
+    const sims = (g.sims || []).filter(o => o.de < n && o.ate >= 0);
+    sims.forEach(o => { lo = Math.min(lo, o.stop, o.alvo); hi = Math.max(hi, o.stop, o.alvo); });
+    const sn = t.situacao.sinal;
+    if (sn) { lo = Math.min(lo, sn.stop, sn.alvo); hi = Math.max(hi, sn.stop, sn.alvo); }
+    const pad = (hi - lo) * 0.04 || 1; lo -= pad; hi += pad;
+    const dx = (W - L - R) / n, bw = Math.max(1.5, dx * 0.62);
+    const X = i => L + dx * (i + 0.5), Y = y => T + (hi - y) / (hi - lo) * (B - T);
+    let s = '';
+    const passo = [1, 2, 2.5, 5, 10, 20, 25, 50, 100].find(st => (hi - lo) / st <= 16) || 100;
+    for (let y = Math.ceil(lo / passo) * passo; y <= hi; y += passo) {
+      s += `<line x1="${L}" x2="${W - R}" y1="${Y(y).toFixed(1)}" y2="${Y(y).toFixed(1)}" class="cy-gl"/><text x="${W - R + 6}" y="${(Y(y) + 4).toFixed(1)}" class="cy-ax">${fmt(y, passo < 1 ? 1 : 0)}</text>`;
+    }
+    s += escalaTempo(g, t.minutos || +rot.slice(1), L, dx, T, B, W - R);
+    // zonas: OB, FVG e iFVG (vivas vão até a borda direita)
+    const NOME = { OB: 'OB', FVG: 'FVG', iFVG: 'iFVG (FVG rompido que inverteu)' };
+    g.zonas.forEach(z => {
+      const x0 = Math.max(L, X(z.de) - dx / 2), x1 = z.ate == null ? W - R : X(Math.min(z.ate, n - 1)) + dx / 2;
+      if (x1 <= L || z.hi < lo || z.lo > hi) return;
+      const c = z.tipo === 'OB' ? 'cy-ob' : z.tipo === 'FVG' ? 'cy-fvg' : 'cy-ifvg';
+      s += `<rect x="${x0.toFixed(1)}" y="${Y(z.hi).toFixed(1)}" width="${Math.max(2, x1 - x0).toFixed(1)}" height="${Math.max(2, Y(z.lo) - Y(z.hi)).toFixed(1)}" class="${c} ${z.lado > 0 ? 'b' : 's'} ${z.ate == null ? 'vivo' : ''}"><title>${NOME[z.tipo]} de ${z.lado > 0 ? 'alta' : 'baixa'} ${fmt(z.lo)}–${fmt(z.hi)}${z.ate == null ? ' · viva' : ''}</title></rect>`;
+    });
+    // operações simuladas
+    let simTxt = '';
+    sims.forEach(o => {
+      const x0 = X(o.de) - dx / 2, x1 = X(Math.min(o.ate, n - 1)) + dx / 2, w = Math.max(dx, 6, x1 - x0);
+      const ye = Y(o.entrada), ya = Y(o.alvo), ys = Y(o.stop);
+      const caixa = (c, y) => `<rect class="${c}" x="${x0.toFixed(1)}" y="${Math.min(ye, y).toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1, Math.abs(y - ye)).toFixed(1)}"/>`;
+      const parc = o.parcial == null ? '' : `<line class="pc" x1="${x0.toFixed(1)}" x2="${(x0 + w).toFixed(1)}" y1="${Y(o.parcial).toFixed(1)}" y2="${Y(o.parcial).toFixed(1)}"/>`;
+      s += `<g class="cy-sim"><title>${o.lado > 0 ? 'Compra' : 'Venda'} simulada ${esc(o.hora)} no ${esc(o.tipo)} · entrada ${fmt(o.entrada)} · stop ${fmt(o.stop)}${o.parcial == null ? '' : ' · parcial ' + fmt(o.parcial)} · alvo ${fmt(o.alvo)} · ${FINAL_TXT[o.res] || o.res} · ${sgn(o.pts, 1)} pts</title>
+        ${caixa('g', ya)}${caixa('p', ys)}${parc}<line class="e" x1="${x0.toFixed(1)}" x2="${(x0 + w).toFixed(1)}" y1="${ye.toFixed(1)}" y2="${ye.toFixed(1)}"/></g>`;
+      const yt = o.lado > 0 ? Math.min(ya, ys) - 4 : Math.max(ya, ys) + 11;
+      simTxt += `<text x="${(x0 + 1).toFixed(1)}" y="${yt.toFixed(1)}" class="cy-simt ${o.pts >= 0 ? 'up' : 'dn'}">${o.lado > 0 ? 'C' : 'V'} ${sgn(o.pts, 1)}</text>`;
+    });
+    // velas
+    v.forEach((c, i) => {
+      const up = c[4] >= c[1], x = X(i);
+      const y0 = Y(Math.max(c[1], c[4])), y1 = Y(Math.min(c[1], c[4]));
+      s += `<g class="${up ? 'cy-cu' : 'cy-cd'}"><title>${esc(c[0])}  A ${fmt(c[1])}  M ${fmt(c[2])}  m ${fmt(c[3])}  F ${fmt(c[4])}</title>
+        <line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${Y(c[2]).toFixed(1)}" y2="${Y(c[3]).toFixed(1)}"/>
+        <rect x="${(x - bw / 2).toFixed(1)}" y="${y0.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, y1 - y0).toFixed(1)}"/></g>`;
+    });
+    const ult = v[n - 1][4];
+    s += `<line x1="${L}" x2="${W - R}" y1="${Y(ult).toFixed(1)}" y2="${Y(ult).toFixed(1)}" class="cy-ultimo"/>
+      <rect x="${W - R + 1}" y="${(Y(ult) - 8).toFixed(1)}" width="${R - 2}" height="16" class="cy-ultbox"/>
+      <text x="${W - R + 6}" y="${(Y(ult) + 4).toFixed(1)}" class="cy-ultt">${fmt(ult, passo < 1 ? 1 : 0)}</text>`;
+    // BOS / CHoCH
+    g.eventos.forEach(ev => {
+      const x0 = X(ev.de), x1 = X(ev.k), y = Y(ev.nivel);
+      s += `<line x1="${x0.toFixed(1)}" x2="${x1.toFixed(1)}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" class="cy-ev ${ev.lado > 0 ? 'b' : 's'}"/>
+        <text x="${((x0 + x1) / 2).toFixed(1)}" y="${(y + (ev.lado > 0 ? -4 : 11)).toFixed(1)}" text-anchor="middle" class="cy-evt ${ev.lado > 0 ? 'b' : 's'}">${ev.tipo}</text>`;
+    });
+    s += simTxt;
+    // sinal de agora: entrada, stop, parcial e alvo
+    if (sn) {
+      [['entrada', sn.entrada, 'Entrada'], ['stop', sn.stop, 'Stop'], ['alvo', sn.parcial, 'Parcial'], ['alvo', sn.alvo, 'Alvo']].forEach(([c, y, tx]) => {
+        if (y == null) return;
+        s += `<line x1="${X(n - 1).toFixed(1)}" x2="${W - R}" y1="${Y(y).toFixed(1)}" y2="${Y(y).toFixed(1)}" class="cy-pl ${c}"/>
+          <text x="${W - R - 4}" y="${(Y(y) - 4).toFixed(1)}" text-anchor="end" class="cy-plt ${c}">${tx} ${fmt(y)}</text>`;
+      });
+    }
+    const pts = sims.filter(o => o.res !== 'aberta').reduce((a, o) => a + o.pts, 0);
+    const e = t.escolha;
+    const janela = `${VELA_TXT[rot] || ''} · ${t.pregoes > 1 ? 'últimos ' + t.pregoes + ' pregões' : 'pregão de hoje'} · de ${esc(v[0][0])} a ${esc(v[n - 1][0])}`;
+    return `<section class="cy-card cy-chart">
+      <div class="cy-tag">${rot} // FVG · iFVG · OB · BOS · CHoCH <span class="cy-janela">${janela}</span></div>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico ${rot} do WDO">${s}</svg>
+      <div class="cy-leg"><span class="b">▮ OB alta</span><span class="s">▮ OB baixa</span><span class="fb">▮ FVG alta</span><span class="fs">▮ FVG baixa</span>
+        <span class="ib">▯ iFVG alta</span><span class="is">▯ iFVG baixa</span><span class="b">▮ ganho até o alvo</span><span class="s">▮ risco até o stop</span></div>
+      <div class="cy-simres"><b>Operações simuladas hoje: ${sims.length}</b>${sims.length ? ` · saldo <b class="cy-mono ${cls(pts)}">${sgn(pts, 1)} pts</b> (R$ ${sgn(pts * 10, 0)})` : ''}
+        <small>${esc(nomeCombo(e))}${e.validado ? '' : ' · combinação não validada, só para estudo'} · nenhuma ordem é enviada</small></div>
+    </section>`;
+  }
+
+  function blocoConfluencia(sm) {
+    const T = TEMPOS_SMC.filter(k => sm.tempos[k]);
+    const seta = x => x > 0 ? '<span class="cy-up">▲ alta</span>' : x < 0 ? '<span class="cy-dn">▼ baixa</span>' : '<span class="cy-dim">— indefinida</span>';
+    const sit = k => sm.tempos[k].situacao;
+    const linha = (rot, f) => `<tr><td>${rot}</td>${T.map(k => `<td>${f(sit(k), k)}</td>`).join('')}</tr>`;
+    const comSinal = T.filter(k => sit(k).sinal);
+    let leitura;
+    if (comSinal.length) {
+      leitura = comSinal.map(k => {
+        const x = sit(k).sinal, maiores = T.slice(0, T.indexOf(k));
+        const contra = maiores.filter(m => sit(m).estrutura !== x.lado);
+        return `<b class="${x.lado > 0 ? 'cy-up' : 'cy-dn'}">${k}: ${x.lado > 0 ? 'COMPRA' : 'VENDA'} no ${esc(x.tipo)}</b> — entrada ${fmt(x.entrada)}, stop ${fmt(x.stop)}${x.parcial == null ? '' : ', parcial ' + fmt(x.parcial)}, alvo ${fmt(x.alvo)}. ` +
+          (!maiores.length ? 'É o maior tempo: não há tempo acima para conferir.' : !contra.length ? `<b class="cy-up">Com confluência</b>: ${maiores.join(', ')} na mesma direção.` : `<b class="cy-dn">Sem confluência</b>: ${contra.join(', ')} em direção contrária.`);
+      }).join('<br>');
+    } else {
+      const dir = T.map(k => sit(k).estrutura);
+      leitura = dir.every(x => x > 0) ? 'Todos os tempos em estrutura de alta. Nenhum sinal de entrada agora.'
+        : dir.every(x => x < 0) ? 'Todos os tempos em estrutura de baixa. Nenhum sinal de entrada agora.'
+        : 'Tempos em direções diferentes. Nenhum sinal de entrada agora.';
+    }
+    return `<section class="cy-card cy-conf">
+      <div class="cy-tag">CONFLUÊNCIA // o que cada tempo gráfico diz agora</div>
+      <div class="cy-confwrap"><table class="cy-tab cy-conftab"><thead><tr><th></th>${T.map(k => `<th>${k}</th>`).join('')}</tr></thead><tbody>
+        ${linha('Estrutura', x => seta(x.estrutura))}
+        ${linha('Último evento', x => x.evento ? `<span class="${x.evento.lado > 0 ? 'cy-up' : 'cy-dn'}">${esc(x.evento.tipo)}</span> <small>${esc(x.evento.hora)}</small>` : '—')}
+        ${linha('Preço em zona a favor', x => x.zona && x.zona.length ? '✓ ' + esc(x.zona.join(' + ')) : '<span class="cy-dim">—</span>')}
+        ${linha('Tempos maiores concordam', (x, k) => k === T[0] ? '<span class="cy-dim">é o maior</span>' : (x.estrutura > 0 ? x.conf_alta : x.estrutura < 0 ? x.conf_baixa : false) ? '<span class="cy-up">sim</span>' : '<span class="cy-dn">não</span>')}
+        ${linha('Sinal agora', x => x.sinal ? `<b class="${x.sinal.lado > 0 ? 'cy-up' : 'cy-dn'}">${x.sinal.lado > 0 ? 'COMPRA' : 'VENDA'}</b>` : '<span class="cy-dim">—</span>')}
+      </tbody></table></div>
+      <p class="cy-conflei">${leitura}</p>
+      <p class="cy-dim cy-small">Só price action (FVG, iFVG, OB, BOS, CHoCH). Leitura da última vela fechada de cada tempo. Não é ordem nem recomendação.</p>
+    </section>`;
+  }
+
+  function blocoComparacao(sm) {
+    const mt = (sm.modelo || {}).tempos || {};
+    const T = TEMPOS_SMC.filter(k => mt[k]);
+    if (!T.length) return '';
+    const ac = st => st && st.n ? `<span class="cy-mono ${st.acerto >= 0.7 ? 'cy-up' : ''}">${pct(st.acerto)}</span> <small>em ${st.n}</small>` : '<span class="cy-dim">—</span>';
+    const pt = st => st && st.n ? `<span class="cy-mono ${cls(st.pts)}">${sgn(st.pts, 1)}</span>` : '<span class="cy-dim">—</span>';
+    const d = s => s ? s.split('-').reverse().join('/') : '';
+    const melhor = T.map(k => {
+      const e = mt[k].escolha;
+      return `<tr><td><b>${k}</b></td><td>${esc(nomeCombo(e))}</td><td>${ac(e.is)}</td><td>${ac(e.oos)}</td><td>${pt(e.oos)}</td>
+        <td class="cy-mono ${cls(e.oos.rs)}">${e.oos.n ? 'R$ ' + sgn(e.oos.rs, 0) : '—'}</td>
+        <td><span class="cy-badge ${e.validado ? 'ok' : 'no'}">${e.validado ? '70%+ validado' : 'não validado'}</span></td></tr>`;
+    }).join('');
+    const F = ['stop', 'parcial e zerou', 'parcial e travou +2,5', 'alvo', 'tempo'];
+    const tres = T.map(k => ['sozinho', 'com_conf'].map(q => {
+      const st = mt[k].tres_ctts[q].oos, f = st.finais || {};
+      return `<tr><td>${q === 'sozinho' ? `<b>${k}</b>` : ''}</td><td>${q === 'sozinho' ? 'sozinho' : 'com confluência'}</td><td class="cy-mono">${st.n}</td><td>${ac(st)}</td>
+        ${F.map(x => `<td class="cy-mono">${f[x] || 0}</td>`).join('')}<td>${pt(st)}</td><td class="cy-mono ${cls(st.rs)}">${st.n ? 'R$ ' + sgn(st.rs, 0) : '—'}</td></tr>`;
+    }).join('')).join('');
+    const setup = T.map(k => `<tr><td><b>${k}</b></td>${['OB', 'FVG', 'iFVG'].map(f => { const st = mt[k].por_setup[f].oos; return `<td>${ac(st)}</td><td>${pt(st)}</td>`; }).join('')}
+      <td>${ac(mt[k].sozinho.oos)}</td><td>${ac(mt[k].com_conf.oos)}</td></tr>`).join('');
+    const rank = T.map(k => `<details class="cy-rank"><summary>${k}: as 12 melhores combinações no treino (de ${mt[k].combinacoes})</summary>
+      <table class="cy-tab"><thead><tr><th>Combinação</th><th>Treino</th><th>Validação</th><th>Média</th><th>Pontos</th></tr></thead><tbody>
+      ${mt[k].ranking.map(r => `<tr><td>${esc(nomeCombo(r))}</td><td>${ac(r.is)}</td><td>${ac(r.oos)}</td><td class="cy-mono ${cls(r.oos.media_r)}">${r.oos.n ? sgn(r.oos.media_r) + ' R' : '—'}</td><td>${pt(r.oos)}</td></tr>`).join('')}
+      </tbody></table></details>`).join('');
+    const p0 = mt[T[0]];
+    // efeito de cada filtro, lado a lado por tempo (validação)
+    const efeito = gn => {
+      const base = T.map(k => (mt[k].efeito || {})[gn] || []);
+      const nl = Math.max(...base.map(x => x.length));
+      if (!nl) return '';
+      const nome = r => r.nome.replace(/do M\d+/, 'do tempo menor');
+      const ref = base.find(x => x.length === nl);
+      const linhas = ref.map((r, i) => `<tr><td>${esc(nome(r))}</td>${base.map(x => { const st = x[i] && x[i].oos;
+        return st ? `<td>${ac(st)}</td><td>${pt(st)}</td>` : '<td class="cy-dim">—</td><td></td>'; }).join('')}</tr>`).join('');
+      return `<div class="cy-confwrap"><table class="cy-tab cy-efeito"><thead><tr><th>Filtro</th>${T.map(k => `<th>${k}</th><th>pts</th>`).join('')}</tr></thead><tbody>${linhas}</tbody></table></div>`;
+    };
+    const sobrev = T.map(k => {
+      const x = mt[k];
+      const lista = (x.sobreviventes || []).map(r => `<li>${esc(nomeCombo(r))} — treino ${ac(r.is)}, validação ${ac(r.oos)}, ${pt(r.oos)} pts</li>`).join('');
+      return `<tr><td><b>${k}</b></td><td class="cy-mono">${x.combinacoes}</td><td class="cy-mono">${x.passam_treino ?? '—'}</td>
+        <td class="cy-mono ${x.sobrevivem ? 'cy-up' : ''}">${x.sobrevivem ?? '—'}</td><td>${lista ? `<ul class="cy-sobrev">${lista}</ul>` : '<span class="cy-dim">nenhuma</span>'}</td></tr>`;
+    }).join('');
+    return `<section class="cy-card cy-bt cy-comp">
+      <div class="cy-tag">COMPARAÇÃO POR TEMPO GRÁFICO // motor SMC · treinado em ${esc(sm.modelo.gerado_em || '')}</div>
+      <h4>Quantas combinações chegam a 70%</h4>
+      <div class="cy-confwrap"><table class="cy-tab"><thead><tr><th>Tempo</th><th>Testadas</th><th>70%+ e lucro no treino</th><th>Mantêm na validação</th><th>Quais</th></tr></thead><tbody>${sobrev}</tbody></table></div>
+      <p class="cy-dim cy-small">Uma combinação só conta se passar nos dois períodos: 70%+ de acerto com lucro no treino e de novo nos dias que o treino não viu, com pelo menos ${sm.modelo.min_is || 40} operações no treino e ${sm.modelo.min_oos || 20} na validação.</p>
+      <h4>Efeito de cada filtro na sua gestão de 3 contratos (validação)</h4>
+      ${efeito('3 contratos')}
+      <p class="cy-dim cy-small">Cada linha liga um filtro por vez, a partir de "sem filtro". Acerto = parcial de +2,5 antes do stop.</p>
+      <h4>Melhor combinação de cada tempo</h4>
+      <div class="cy-confwrap"><table class="cy-tab"><thead><tr><th>Tempo</th><th>Combinação escolhida no treino</th><th>Acerto no treino</th><th>Acerto na validação</th><th>Pontos</th><th>R$</th><th></th></tr></thead><tbody>${melhor}</tbody></table></div>
+      <h4>Sua gestão: 3 contratos, stop 5, parcial de 2 em +2,5, último com alvo +10</h4>
+      <div class="cy-confwrap"><table class="cy-tab"><thead><tr><th>Tempo</th><th></th><th>Operações</th><th>Acerto da parcial</th><th>Stop cheio</th><th>Parcial e zerou</th><th>Parcial e travou +2,5</th><th>Alvo</th><th>Por tempo</th><th>Pontos</th><th>R$</th></tr></thead><tbody>${tres}</tbody></table></div>
+      <p class="cy-dim cy-small">Para essa gestão empatar depois do custo, a parcial precisa sair em cerca de 73% das operações. Acertar 67% é o que o acaso entrega (2,5 pontos a favor contra 5 contra).</p>
+      <h4>Acerto por tipo de zona e com ou sem confluência (na combinação escolhida)</h4>
+      <div class="cy-confwrap"><table class="cy-tab"><thead><tr><th>Tempo</th><th>OB</th><th>pts</th><th>FVG</th><th>pts</th><th>iFVG</th><th>pts</th><th>Sozinho</th><th>Com confluência</th></tr></thead><tbody>${setup}</tbody></table></div>
+      ${rank}
+      <p class="cy-dim cy-small">Todos os números desta tabela, menos a coluna "treino", são da <b>validação</b>: os 30% finais dos dias, que o treino não viu (${d(p0.periodo_oos[0])} a ${d(p0.periodo_oos[1])} no ${T[0]}).
+        Pontos somando os contratos, já com custo de ${fmt(sm.modelo.custo_pts, 1)} ponto por contrato. Entrada, parcial, stop e alvo dos tempos M15, M60 e M240 são conferidos vela a vela no M5.
+        Resultado passado não garante resultado futuro.</p>
+    </section>`;
+  }
+
+  function blocoSMC(sm) {
+    const cartoes = TEMPOS_SMC.filter(k => sm.tempos[k]).map(k => graficoSMC(k, sm.tempos[k])).join('');
+    return `${blocoConfluencia(sm)}<div class="cy-tempos">${cartoes}</div>${blocoComparacao(sm)}`;
+  }
+
+  function desenhar(d) {
+    const e = d.estrategia;
+    if (!e) {
+      root.innerHTML = `<div class="cy"><section class="cy-card"><div class="cy-tag">ESTRATÉGIA // M15</div>
+        <p>O motor ainda não mandou dados. Abra o <b>Painel ao vivo.bat</b> (no primeiro uso do dia ele treina por cerca de 1 minuto).</p></section></div>`;
+      return;
+    }
+    root.innerHTML = `<div class="cy">
+      <div class="cy-head"><h2 class="cy-title" data-text="ESTRATÉGIA // M15">ESTRATÉGIA // M15</h2>
+        <span class="cy-dim">${esc(d.atualizado_em)} · WDO ${fmt(e.preco)} · ATR ${fmt(e.atr)}</span></div>
+      <div class="cy-grid">
+        ${d.smc && d.smc.tempos ? blocoSMC(d.smc) : grafico(e) + blocoTempos(e)}
+        ${blocoDecisao(e)}
+        ${blocoAgentes(e)}
+        ${blocoBacktest(e)}
+      </div>
+      <p class="cy-dim cy-small">Leitura técnica automática para estudo pessoal. Resultado passado não garante resultado futuro; não é recomendação de compra ou venda.</p>
+    </div>`;
+  }
+
+  function buscar() {
+    fetch('dados.json?v=' + Date.now(), { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        dados = d;
+        if (ultimo === d.atualizado_em && root.firstChild) return;
+        ultimo = d.atualizado_em;
+        if (root.classList.contains('active')) desenhar(d);
+      })
+      .catch(() => { if (!dados) root.innerHTML = '<div class="cy"><p>Não consegui carregar o dados.json.</p></div>'; });
+  }
+
+  window.qpEstrategia = () => { if (dados) desenhar(dados); else buscar(); };
+  buscar();
+  setInterval(() => { if (!document.hidden) buscar(); }, INTERVALO);
+})();

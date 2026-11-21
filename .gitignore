@@ -1,0 +1,11 @@
+# Cópias de segurança feitas durante os ajustes
+*.bak*
+
+# Dados gerados automaticamente (atualizados a cada minuto)
+dados.json
+
+# Arquivos compactados e miniaturas locais
+*.7z
+*.zip
+Thumbs.db
+desktop.ini

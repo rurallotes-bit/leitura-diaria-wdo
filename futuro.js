@@ -246,7 +246,7 @@
   // ---------- iniciar ----------
   enfeitar();
   function buscar() {
-    fetch('dados.json?v=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).then(d => { desenharAgentes(d); desenharDI(d); }).catch(() => {});
+    fetch((window.QP_DADOS_URL || 'dados.json') + '?v=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).then(d => { desenharAgentes(d); desenharDI(d); }).catch(() => {});
   }
   buscar();
   setInterval(() => { if (!document.hidden) buscar(); }, 15000);

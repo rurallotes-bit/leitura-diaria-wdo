@@ -397,7 +397,7 @@
         .then(w => { if (w) EXTWIN = w; atualizarBlocos(); })
         .catch(() => { /* sem win.json: a aba WIN mostra os quadros sem números */ });
     }
-    fetch('dados.json?v=' + Date.now(), { cache: 'no-store' })
+    fetch((window.QP_DADOS_URL || 'dados.json') + '?v=' + Date.now(), { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         const novo = !EXT || d.atualizado_em !== EXT.atualizado_em;

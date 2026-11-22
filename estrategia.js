@@ -531,7 +531,7 @@
   }
 
   function buscar() {
-    fetch('dados.json?v=' + Date.now(), { cache: 'no-store' })
+    fetch((window.QP_DADOS_URL || 'dados.json') + '?v=' + Date.now(), { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         dados = d;

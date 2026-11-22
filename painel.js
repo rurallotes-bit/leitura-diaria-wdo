@@ -497,7 +497,7 @@
   setInterval(contagem, 1000);
 
   function buscar(primeira) {
-    fetch('dados.json?v=' + Date.now(), { cache: 'no-store' })
+    fetch((window.QP_DADOS_URL || 'dados.json') + '?v=' + Date.now(), { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         if (ultimo && d.atualizado_em === ultimo.atualizado_em) return; // nada novo

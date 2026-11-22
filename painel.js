@@ -25,14 +25,19 @@
 
   // Níveis percentuais a partir da abertura do dia. Mude aqui para usar outros valores.
   const NIVEIS_PCT = [1.45, 0.6, 0.4, -0.4, -0.6, -1.3];
-  const noTick = v => Math.round(v / 0.5) * 0.5; // WDO anda de 0,5 em 0,5
+  // arredonda para o tamanho do tick do ativo: WDO anda de 0,5 em 0,5; WIN de 5 em 5 (campo tick do win.json)
+  const noTick = (v, t = 0.5) => Math.round(v / t) * t;
   function niveisAbertura(w) {
     if (!w || w.abertura == null) return [];
-    return NIVEIS_PCT.map(p => ({
-      p, v: noTick(w.abertura * (1 + p / 100)),
-      n: (p > 0 ? '+' : '−') + String(Math.abs(p)).replace('.', ',') + '%',
-      atingido: p > 0 ? w.maxima >= noTick(w.abertura * (1 + p / 100)) : w.minima <= noTick(w.abertura * (1 + p / 100))
-    }));
+    const t = w.tick || 0.5;
+    return NIVEIS_PCT.map(p => {
+      const v = noTick(w.abertura * (1 + p / 100), t);
+      return {
+        p, v,
+        n: (p > 0 ? '+' : '−') + String(Math.abs(p)).replace('.', ',') + '%',
+        atingido: p > 0 ? w.maxima >= v : w.minima <= v
+      };
+    });
   }
   window.qpNiveisAbertura = niveisAbertura; // usado também no quadro 4 do checklist
 

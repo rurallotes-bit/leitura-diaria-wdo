@@ -88,7 +88,7 @@
           <input type="checkbox" data-k="${f.k}" ${rec[f.k] ? 'checked' : ''}> ${f.l}</label>
           <input type="text" data-k="${f.k}_t" value="${esc(rec[f.k + '_t'])}" placeholder="detalhe (opcional)" autocomplete="off"></div>`;
       case 'autohead':
-        return `<p class="hint">Dados de ${esc(rec.ext_at || '—')} · Compra/Venda = pressão sobre o dólar (WDO)</p>`;
+        return `<p class="hint">Dados de ${esc(rec.ext_at || '—')} · Compra/Venda = pressão sobre o dólar</p>`;
       case 'auto': {
         const x = rec.ext_auto && rec.ext_auto[f.k];
         if (!x) return `<div class="row"><label>${f.l}</label><span class="muted">sem dado</span></div>`;
@@ -99,11 +99,11 @@
           · <strong class="${sc}">${esc(x.sinal)}</strong></div></div>`;
       }
       case 'pctlv':
-        return '<div id="cl-pct" class="qp-vars"></div>';
+        return '<div class="cl-pct qp-vars"></div>';
       case 'news':
-        return '<div id="cl-news" class="qp-vars nw"></div>';
+        return '<div class="cl-news qp-vars nw"></div>';
       case 'world':
-        return '<div id="cl-world" class="qp-vars"></div>';
+        return '<div class="cl-world qp-vars"></div>';
       case 'tvcal':
         return `<div class="nw-tv qp-vars"><a class="nw-btn" href="https://br.investing.com/economic-calendar/" target="_blank" rel="noopener nofollow">
           Abrir calendário do Investing.com (resultados ao vivo) ↗</a>
@@ -207,8 +207,8 @@
     return `<span class="nw-star s${n}" title="${n} estrela(s) de importância">${'★'.repeat(n)}<i>${'★'.repeat(3 - n)}</i></span>`;
   };
 
-  function blocoNoticias() {
-    const el = $('#cl-news');
+  function blocoNoticias(root) {
+    const el = root && root.querySelector('.cl-news');
     if (!el) return;
     if (!EXT) { el.innerHTML = '<p class="hint">Carregando agenda...</p>'; return; }
     const ag = EXT.agenda || [];
@@ -252,10 +252,10 @@
       '<p class="hint">Só EUA, horário de Brasília. Estrelas no padrão do Investing (aproximado). Contagem regressiva para 2 e 3 estrelas; alerta de notícia saindo nas de 3 estrelas. Valores divulgados: calendário do Investing no fim deste quadro.</p>';
   }
 
-  function blocoNiveis() {
-    const el = $('#cl-pct');
+  function blocoNiveis(root, ativo) {
+    const el = root && root.querySelector('.cl-pct');
     if (!el) return;
-    const w = EXT && EXT.wdo, calc = window.qpNiveisAbertura;
+    const w = ativo === 'WIN' ? EXTWIN : (EXT && EXT.wdo), calc = window.qpNiveisAbertura;
     if (!w || !calc) { el.innerHTML = '<p class="hint">Carregando níveis da abertura...</p>'; return; }
     if (clDate !== todayStr()) { el.innerHTML = '<p class="hint">Níveis da abertura: só para o dia de hoje.</p>'; return; }
     if (w.abertura == null) { el.innerHTML = '<p class="hint">Abertura do dia: aparece depois do primeiro negócio do pregão (9h).</p>'; return; }
@@ -275,12 +275,12 @@
         <td class="qp-num">${fmt(l.v)}</td>
         <td class="qp-num ${l.tipo === 'now' ? '' : cls(l.v - w.preco)}">${l.tipo === 'now' ? '' : sgn(l.v - w.preco) + ' pts'}</td>
         <td>${l.atingido ? '<span class="pl-hit">✓ atingido</span>' : ''}</td></tr>`).join('')}</tbody></table>
-      <p class="hint">Níveis calculados sobre a abertura de hoje (+0,4% · +0,6% / −0,4% · −0,6%), arredondados para 0,5 ponto. "Atingido" = a máxima ou a mínima do dia já passou pelo nível.</p>
+      <p class="hint">Níveis calculados sobre a abertura de hoje (+0,4% · +0,6% / −0,4% · −0,6%), arredondados para ${w.tick || 0.5} ponto(s). "Atingido" = a máxima ou a mínima do dia já passou pelo nível.</p>
     </div>`;
   }
 
-  function blocoMundo() {
-    const el = $('#cl-world');
+  function blocoMundo(root) {
+    const el = root && root.querySelector('.cl-world');
     if (!el) return;
     const m = EXT && EXT.mundo;
     if (!m) { el.innerHTML = '<p class="hint">Força do mercado mundial: rode o script atualizado.</p>'; return; }
@@ -314,31 +314,50 @@
     return `<div class="cl-col">${esq.join('')}</div><div class="cl-col">${dir.join('')}</div>`;
   }
 
-  function renderChecklist() {
-    const root = $('#view-checklist');
-    let rec = db.checklists[clDate];
+  // WDO e WIN têm o mesmo pré-mercado, com anotações e níveis separados por ativo.
+  const VIEW = { WDO: 'view-checklist', WIN: 'view-win' };
+  const chaveDia = ativo => (ativo === 'WIN' ? 'WIN|' : '') + clDate;
+
+  function renderChecklist(ativo = 'WDO') {
+    const root = document.getElementById(VIEW[ativo]);
+    if (!root) return;
+    const chave = chaveDia(ativo);
+    let rec = db.checklists[chave];
     if (!rec) rec = { date: clDate };
     if (clDate === todayStr() && EXT && EXT.externo) {
       rec.ext_auto = EXT.externo;
       rec.ext_at = EXT.atualizado_em;
     }
-    if (clDate === todayStr() && EXT) preencherDoMT5(rec, EXT.wdo);
-    root.innerHTML = `<div id="clform">${colunasChecklist(rec)}</div>`;
+    const fonte = ativo === 'WIN' ? EXTWIN : (EXT && EXT.wdo);
+    if (clDate === todayStr() && fonte) preencherDoMT5(rec, fonte);
+    root.innerHTML = `<div class="clform">${colunasChecklist(rec)}</div>`;
 
-    blocoNoticias();
-    blocoMundo();
-    blocoNiveis();
+    blocoNoticias(root);
+    blocoMundo(root);
+    blocoNiveis(root, ativo);
     ligarCalendarioTV();
-    bind($('#clform'), rec, () => {
+    bind(root.querySelector('.clform'), rec, () => {
       rec.date = clDate;
-      db.checklists[clDate] = rec;
+      db.checklists[chave] = rec;
       queueSave();
     });
   }
 
+  // atualiza só os blocos automáticos de todas as abas de pré-mercado já montadas
+  function paraCadaAba(fn) {
+    Object.keys(VIEW).forEach(a => {
+      const r = document.getElementById(VIEW[a]);
+      if (r && r.querySelector('.clform')) fn(r, a);
+    });
+  }
+  function atualizarBlocos() {
+    paraCadaAba((r, a) => { blocoNoticias(r); blocoMundo(r); blocoNiveis(r, a); });
+  }
+
   // ---------- abas ----------
   const RENDER = {
-    checklist: renderChecklist,
+    checklist: () => renderChecklist('WDO'),
+    win: () => { renderChecklist('WIN'); if (window.qpWin) window.qpWin(); },
     estrategia: () => { if (window.qpEstrategia) window.qpEstrategia(); },
     ewz: () => { if (window.qpEwz) window.qpEwz(); }
   };
@@ -358,6 +377,7 @@
   });
 
     let EXT = null; // dados automáticos vindos do dados.json
+  let EXTWIN = null; // dados do WIN vindos do win.json (gerar_win.py)
 
   showTab('checklist');
 
@@ -365,24 +385,30 @@
   // Só os blocos automáticos são redesenhados: o que você está digitando não é afetado.
   const APP_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
   function carregarDados(primeira) {
+    fetch('win.json?v=' + Date.now(), { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(w => { if (w) EXTWIN = w; atualizarBlocos(); })
+      .catch(() => { /* sem win.json: a aba WIN mostra os quadros sem números */ });
     fetch('dados.json?v=' + Date.now(), { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         const novo = !EXT || d.atualizado_em !== EXT.atualizado_em;
         EXT = d;
-        if (!$('#view-checklist').classList.contains('active')) return;
-        if (primeira) renderChecklist();
-        else if (novo) { blocoNoticias(); blocoMundo(); blocoNiveis(); }
+        const ativa = $('.view.active');
+        const ativo = ativa && ativa.id === 'view-win' ? 'WIN' : ativa && ativa.id === 'view-checklist' ? 'WDO' : null;
+        if (!ativo) return;
+        if (primeira) renderChecklist(ativo);
+        else if (novo) atualizarBlocos();
       })
       .catch(() => { /* sem dados.json: o diário segue funcionando */ });
   }
   carregarDados(true);
   setInterval(() => { if (!document.hidden) carregarDados(false); }, (APP_LOCAL ? 15 : 60) * 1000);
-  setInterval(() => { if (!document.hidden) blocoNoticias(); }, 20000); // troca de "em breve" para "saindo"
+  setInterval(() => { if (!document.hidden) paraCadaAba(r => blocoNoticias(r)); }, 20000); // troca de "em breve" para "saindo"
   setInterval(() => { // contagem regressiva segundo a segundo
-    const c = $('#cl-news .nw-count');
-    if (!c) return;
-    const ms = new Date(c.dataset.alvo) - new Date();
-    if (ms <= 0) blocoNoticias(); else c.textContent = contagem(ms);
+    $$('.cl-news .nw-count').forEach(c => {
+      const ms = new Date(c.dataset.alvo) - new Date();
+      if (ms <= 0) blocoNoticias(c.closest('.view')); else c.textContent = contagem(ms);
+    });
   }, 1000);
 })();

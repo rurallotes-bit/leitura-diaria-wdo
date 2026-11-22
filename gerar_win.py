@@ -43,6 +43,7 @@ def main():
             "atualizado_em": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             "simbolo": SIMBOLO,
             "preco": float(tick.last),
+            "tick": 5,  # o WIN anda de 5 em 5 pontos; usado para arredondar os níveis
             "tempos": {},
         }
         for nome, (tf, quantidade) in TEMPOS.items():

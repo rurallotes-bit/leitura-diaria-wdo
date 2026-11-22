@@ -259,7 +259,7 @@
 .modo-btn { position: absolute; top: 9px; right: 16px; background: var(--card2); border: 1px solid var(--line); border-radius: 8px;
   color: var(--muted); font-size: .78rem; padding: 4px 10px; cursor: pointer; }
 .modo-btn:hover { color: var(--text); border-color: var(--accent); }
-#clform { display: flex; flex-direction: column; }
+.clform { display: flex; flex-direction: column; }
 .cl-col { display: contents; }
 
 html.largo main { max-width: 1680px; padding: 16px 24px; }
@@ -278,7 +278,7 @@ html.largo .qp-a-chart { grid-area: chart; }
 html.largo .qp-a-esc { grid-area: esc; max-height: 520px; overflow-y: auto; }
 html.largo .qp-a-radar { grid-area: radar; }
 
-html.largo #clform { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 16px; align-items: start; }
+html.largo .clform { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 16px; align-items: start; }
 html.largo .cl-col { display: block; }
 html.largo #view-trades, html.largo #view-week, html.largo #view-history { max-width: 1100px; margin: 0 auto; }
 

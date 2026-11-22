@@ -337,7 +337,11 @@
   }
 
   // ---------- abas ----------
-  const RENDER = { checklist: renderChecklist, estrategia: () => { if (window.qpEstrategia) window.qpEstrategia(); } };
+  const RENDER = {
+    checklist: renderChecklist,
+    estrategia: () => { if (window.qpEstrategia) window.qpEstrategia(); },
+    ewz: () => { if (window.qpEwz) window.qpEwz(); }
+  };
 
   function showTab(name) {
     $$('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));

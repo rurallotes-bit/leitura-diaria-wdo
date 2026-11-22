@@ -1,0 +1,11 @@
+/* Aba EWZ */
+/* só o gráfico: esconde o painel de dashboard (#painel-wdo) que aparece nas outras abas */
+body[data-aba="ewz"] #painel-wdo { display: none; }
+.ewz { padding: 12px 16px; }
+.ewz-cab h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.ewz-cab p { margin: 0 0 10px; color: var(--muted); font-size: .9rem; }
+.ewz-tempos { display: flex; gap: 6px; margin-bottom: 10px; }
+.ewz-tempos button { padding: 6px 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 6px; cursor: pointer; }
+.ewz-tempos button.ativo { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ewz-grafico { height: 70vh; min-height: 420px; }
+.ewz-aviso { color: var(--muted); }

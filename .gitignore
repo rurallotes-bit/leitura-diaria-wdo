@@ -3,9 +3,11 @@
 
 # Dados gerados automaticamente (atualizados a cada minuto)
 dados.json
+ewz.json
 
 # Arquivos compactados e miniaturas locais
 *.7z
 *.zip
 Thumbs.db
 desktop.ini
+win.json

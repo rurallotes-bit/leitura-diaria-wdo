@@ -72,6 +72,7 @@ html.tema-claro, html.tema-claro .qp, html.tema-claro .cy {
   --accent: #0a6fd6;
   --bg: #f4f7fb; --card: #ffffff; --card2: #eef2f7; --line: #d5dde8; --text: #1b2430; --muted: #5a6676;
   --qp-bg: #f4f7fb; --qp-card: #ffffff; --qp-edge: rgba(10, 111, 214, .25); --qp-edge-hot: #0a6fd6;
+  --qp-text: #1b2430; --qp-text2: #5a6676; --qp-muted: #5a6676;
   --qp-grid: rgba(20, 40, 70, .07); --qp-cyan: #0a7fb0; --qp-violet: #6a5bd6;
   --cy-bg: #f7f4fb; --cy-card: #ffffff; --cy-edge: rgba(190, 40, 160, .3); --cy-cyan: #0a7fb0; --cy-mag: #b8269c;
 }

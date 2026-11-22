@@ -350,8 +350,12 @@
       if (r && r.querySelector('.clform')) fn(r, a);
     });
   }
+  // só a aba que está na tela: as outras são redesenhadas quando você abrir
   function atualizarBlocos() {
-    paraCadaAba((r, a) => { blocoNoticias(r); blocoMundo(r); blocoNiveis(r, a); });
+    paraCadaAba((r, a) => {
+      if (!r.classList.contains('active')) return;
+      blocoNoticias(r); blocoMundo(r); blocoNiveis(r, a);
+    });
   }
 
   // ---------- abas ----------
@@ -385,10 +389,14 @@
   // Só os blocos automáticos são redesenhados: o que você está digitando não é afetado.
   const APP_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
   function carregarDados(primeira) {
-    fetch('win.json?v=' + Date.now(), { cache: 'no-store' })
-      .then(r => (r.ok ? r.json() : null))
-      .then(w => { if (w) EXTWIN = w; atualizarBlocos(); })
-      .catch(() => { /* sem win.json: a aba WIN mostra os quadros sem números */ });
+    // win.json (300 KB) só é buscado na primeira vez e quando a aba WIN está na tela
+    const ativaAgora = $('.view.active');
+    if (primeira || (ativaAgora && ativaAgora.id === 'view-win')) {
+      fetch('win.json?v=' + Date.now(), { cache: 'no-store' })
+        .then(r => (r.ok ? r.json() : null))
+        .then(w => { if (w) EXTWIN = w; atualizarBlocos(); })
+        .catch(() => { /* sem win.json: a aba WIN mostra os quadros sem números */ });
+    }
     fetch('dados.json?v=' + Date.now(), { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
@@ -404,7 +412,7 @@
   }
   carregarDados(true);
   setInterval(() => { if (!document.hidden) carregarDados(false); }, (APP_LOCAL ? 15 : 60) * 1000);
-  setInterval(() => { if (!document.hidden) paraCadaAba(r => blocoNoticias(r)); }, 20000); // troca de "em breve" para "saindo"
+  setInterval(() => { if (!document.hidden) paraCadaAba(r => { if (r.classList.contains('active')) blocoNoticias(r); }); }, 20000); // troca de "em breve" para "saindo"
   setInterval(() => { // contagem regressiva segundo a segundo
     $$('.cl-news .nw-count').forEach(c => {
       const ms = new Date(c.dataset.alvo) - new Date();

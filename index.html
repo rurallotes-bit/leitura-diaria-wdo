@@ -24,6 +24,7 @@
   <link rel="stylesheet" href="xp.css?v=1">
   <link rel="stylesheet" href="ewz.css">
   <link rel="stylesheet" href="win.css">
+  <link rel="stylesheet" href="mercado.css">
   <script>
     // Dados ao vivo: o gerar_dados.py publica o dados.json no repositório antigo (GitHub Pages).
     // Assim, este site (no PC ou na internet) mostra os mesmos números.
@@ -64,6 +65,7 @@
       <button data-tab="win">WIN</button>
       <button data-tab="estrategia">Estratégia</button>
       <button data-tab="ewz">EWZ</button>
+      <button data-tab="mercado">Mercado</button>
     </nav>
   </header>
   <!-- Faixa única de cotações, rolando junta: TradingView (US10Y, DXY, S&P 500) + WIN vigente e DI1 (MT5).
@@ -135,6 +137,7 @@
     <section id="view-win" class="view"></section>
     <section id="view-estrategia" class="view"></section>
     <section id="view-ewz" class="view"></section>
+    <section id="view-mercado" class="view"></section>
   </main>
 
   <div id="toast"></div>
@@ -144,6 +147,7 @@
   <script async src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   <script src="ewz.js"></script>
   <script src="win.js"></script>
+  <script src="mercado.js"></script>
   <script>
     (function () {
       var b = document.getElementById('modoTela'), ordem = ['auto', 'pc', 'cel'];

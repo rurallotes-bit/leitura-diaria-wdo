@@ -363,7 +363,8 @@
     checklist: () => renderChecklist('WDO'),
     win: () => { renderChecklist('WIN'); if (window.qpWin) window.qpWin(); },
     estrategia: () => { if (window.qpEstrategia) window.qpEstrategia(); },
-    ewz: () => { if (window.qpEwz) window.qpEwz(); }
+    ewz: () => { if (window.qpEwz) window.qpEwz(); },
+    mercado: () => { if (window.qpMercado) window.qpMercado(); }
   };
 
   function showTab(name) {

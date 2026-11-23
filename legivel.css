@@ -42,3 +42,12 @@ main *, .qp-card, .cy-card { min-width: 0; }
 html, body { overflow-x: hidden; overflow-x: clip; }
 /* lista da força do mercado mundial: colunas flexíveis para caber a fonte maior */
 .mw-row { grid-template-columns: minmax(0, 1fr) minmax(36px, 70px) auto !important; column-gap: 6px; }
+
+/* 4. Celular: um quadro por linha e números que não quebram (a fonte maior espremia as colunas) */
+@media (max-width: 700px) {
+  .qp-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .qp-grid > * { grid-column: 1 / -1 !important; min-width: 0; }
+  .qp-ext td { white-space: nowrap; }
+  .qp-ext td.qp-num { width: 1%; }
+  .qp-ext td:first-child { white-space: normal; }
+}

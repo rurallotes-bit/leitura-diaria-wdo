@@ -69,6 +69,15 @@
       wickUpColor: '#3fb97a', wickDownColor: '#ef5b5b',
     });
     serie.setData(velas.map(v => ({ time: v.t - DESLOC, open: v.o, high: v.h, low: v.l, close: v.c })));
+    // BoS e CHoCH (calculados pelo gerar_win.py, mesma regra da aba EWZ)
+    const evs = (dados.eventos && dados.eventos[tempo]) || [];
+    serie.setMarkers(evs.map(e => ({
+      time: e.t - DESLOC,
+      position: e.direcao === 'alta' ? 'belowBar' : 'aboveBar',
+      color: e.direcao === 'alta' ? '#3fb97a' : '#ef5b5b',
+      shape: e.direcao === 'alta' ? 'arrowUp' : 'arrowDown',
+      text: e.tipo,
+    })));
     grafico.timeScale().fitContent();
   }
 

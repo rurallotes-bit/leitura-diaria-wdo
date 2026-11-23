@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="banco.css">
   <link rel="stylesheet" href="banco-escuro.css">
   <link rel="stylesheet" href="futuro.css?v=3">
-  <link rel="stylesheet" href="legivel.css?v=1">
+  <link rel="stylesheet" href="legivel.css?v=2">
   <link rel="stylesheet" href="xp.css?v=1">
   <link rel="stylesheet" href="ewz.css">
   <link rel="stylesheet" href="win.css">
@@ -35,7 +35,8 @@
       var modo = 'auto';
       try { modo = localStorage.getItem('modoTela') || 'auto'; } catch (e) {}
       function aplicar() {
-        var largo = modo === 'pc' || (modo === 'auto' && window.innerWidth >= 1200);
+        // "PC" só vale em tela larga: num celular o layout de computador espreme tudo
+        var largo = (modo === 'pc' && window.innerWidth >= 900) || (modo === 'auto' && window.innerWidth >= 1200);
         document.documentElement.classList.toggle('largo', largo);
         // PC: layout de referência de 1440 px escalado para ocupar a tela toda (mesma proporção em qualquer monitor)
         document.documentElement.style.zoom = largo ? Math.max(1, window.innerWidth / 1440).toFixed(3) : '';

@@ -13,6 +13,8 @@ from datetime import datetime
 
 import MetaTrader5 as mt5
 
+from gerar_ewz import eventos  # mesma regra de BoS e CHoCH usada na aba EWZ
+
 SIMBOLO = "WINZ26"  # contrato vigente; troque quando o vencimento virar
 ARQUIVO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "win.json")
 TEMPOS = {"15": (mt5.TIMEFRAME_M15, 2000), "60": (mt5.TIMEFRAME_H1, 1000)}
@@ -45,13 +47,15 @@ def main():
             "preco": float(tick.last),
             "tick": 5,  # o WIN anda de 5 em 5 pontos; usado para arredondar os níveis
             "tempos": {},
+            "eventos": {},  # BoS e CHoCH de cada tempo
         }
         for nome, (tf, quantidade) in TEMPOS.items():
             barras = mt5.copy_rates_from_pos(SIMBOLO, tf, 0, quantidade)
             if barras is None:
                 raise RuntimeError(f"sem dados M{nome}: {mt5.last_error()}")
             saida["tempos"][nome] = velas(barras, deslocamento)
-            print(f"M{nome}: {len(saida['tempos'][nome])} velas")
+            saida["eventos"][nome] = eventos(saida["tempos"][nome])
+            print(f"M{nome}: {len(saida['tempos'][nome])} velas, {len(saida['eventos'][nome])} eventos (BoS/CHoCH)")
 
         diario = velas(mt5.copy_rates_from_pos(SIMBOLO, mt5.TIMEFRAME_D1, 0, 3), deslocamento)
         hoje, ontem = diario[-1], diario[-2]  # a última barra diária é a do pregão de hoje

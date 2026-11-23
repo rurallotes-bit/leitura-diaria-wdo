@@ -392,20 +392,25 @@
 
       <section class="qp-card qp-s12 qp-gauge qp-a-g2">
         <h3 class="qp-h qp-tech">Força do externo</h3>
-        ${gauge({ v: k.ext ? k.ext.v : 0, texto: k.ext ? sgn(k.ext.v, 0) : '—' })}
-        <div class="sub">${k.ext ? `${veredito(k.ext.v)[0]} · ${k.ext.usados} ativo(s) com sinal` : 'nenhum ativo com correlação forte'}</div>
+        ${gauge({ v: k.ext ? k.ext.v : 0, texto: k.ext ? sgn(k.ext.v, 0) : '—', big: true })}
+        <div class="qp-verdict ${k.ext ? veredito(k.ext.v)[1] : 'qp-muted'}">${k.ext ? veredito(k.ext.v)[0] : 'Sem leitura'}</div>
+        <p class="qp-note">${k.ext
+          ? `Média de ${k.ext.usados} ativo(s) com sinal, pesada pela correlação com o dólar. Acima de +15 = pressão de alta no dólar; abaixo de −15 = pressão de baixa.`
+          : 'Nenhum ativo com correlação forte com o dólar no momento.'}</p>
       </section>
 
       <section class="qp-card qp-s12 qp-gauge qp-a-g3">
         <h3 class="qp-h qp-tech">Preço vs VWAP</h3>
-        ${gauge({ v: k.vwap, texto: sgn(w.preco - w.vwap) + ' pts' })}
-        <div class="sub">${Math.abs(k.vwap) < 15 ? 'colado na VWAP' : w.preco > w.vwap ? 'comprador no controle' : 'vendedor no controle'}</div>
+        ${gauge({ v: k.vwap, texto: sgn(w.preco - w.vwap) + ' pts', big: true })}
+        <div class="qp-verdict ${Math.abs(k.vwap) < 15 ? 'qp-muted' : w.preco > w.vwap ? 'qp-up' : 'qp-down'}">${Math.abs(k.vwap) < 15 ? 'Colado na VWAP' : w.preco > w.vwap ? 'Comprador no controle' : 'Vendedor no controle'}</div>
+        <p class="qp-note">Preço ${fmt(w.preco, 0)} e VWAP ${fmt(w.vwap, 0)}: ${sgn(w.preco - w.vwap)} pts, que é ${sgn(((w.preco - w.vwap) / w.vwap) * 100, 2)}% ${w.preco >= w.vwap ? 'acima' : 'abaixo'} da VWAP. Acima dela, o comprador controla; abaixo, o vendedor.</p>
       </section>
 
       <section class="qp-card qp-s12 qp-gauge qp-a-g4">
         <h3 class="qp-h qp-tech">Posição no range do dia</h3>
-        ${gauge({ v: k.posRange, min: 0, max: 100, bipolar: false, texto: fmt(k.posRange, 0) + '%' })}
-        <div class="sub">mínima ${fmt(w.minima, 0)} · máxima ${fmt(w.maxima, 0)}</div>
+        ${gauge({ v: k.posRange, min: 0, max: 100, bipolar: false, texto: fmt(k.posRange, 0) + '%', big: true })}
+        <div class="qp-verdict ${k.posRange >= 67 ? 'qp-up' : k.posRange <= 33 ? 'qp-down' : 'qp-muted'}">${k.posRange >= 67 ? 'Perto da máxima' : k.posRange <= 33 ? 'Perto da mínima' : 'Meio do range'}</div>
+        <p class="qp-note">Mínima ${fmt(w.minima, 0)} = 0% · máxima ${fmt(w.maxima, 0)} = 100%. O preço está ${fmt(w.preco - w.minima, 0)} pts acima da mínima e faltam ${fmt(w.maxima - w.preco, 0)} pts para a máxima.</p>
       </section>
 
       <section class="qp-card qp-s7 qp-a-radar">

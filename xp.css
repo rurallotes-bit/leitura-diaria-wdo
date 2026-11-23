@@ -52,9 +52,14 @@ nav button.active {
 }
 /* botões de tela e tema: mais baixos (só a altura; a largura continua a mesma) */
 .modo-btn {
+  height: auto !important;
+  min-height: 0 !important;
+  align-self: center !important;
   padding-top: 1px !important;
   padding-bottom: 1px !important;
   line-height: 1.2 !important;
+  font-size: .8rem !important;
+  box-sizing: border-box !important;
 }
 
 /* botão principal em amarelo, como os botões de ação do XP */

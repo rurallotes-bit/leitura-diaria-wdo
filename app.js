@@ -364,7 +364,8 @@
     win: () => { renderChecklist('WIN'); if (window.qpWin) window.qpWin(); },
     estrategia: () => { if (window.qpEstrategia) window.qpEstrategia(); },
     ewz: () => { if (window.qpEwz) window.qpEwz(); },
-    mercado: () => { if (window.qpMercado) window.qpMercado(); }
+    mercado: () => { if (window.qpMercado) window.qpMercado(); },
+    eua: () => { if (window.qpEua) window.qpEua(); }
   };
 
   function showTab(name) {

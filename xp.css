@@ -50,6 +50,12 @@ nav button.active {
   border-color: var(--xp-amarelo) !important;
   color: #fff !important;
 }
+/* botões de tela e tema: mais baixos (só a altura; a largura continua a mesma) */
+.modo-btn {
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  line-height: 1.2 !important;
+}
 
 /* botão principal em amarelo, como os botões de ação do XP */
 button.primary {
